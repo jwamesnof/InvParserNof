@@ -1,27 +1,43 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+import sqlite3
+from fastapi import FastAPI, UploadFile, File
 import oci
 import base64
+import json
+from fastapi import HTTPException
 from db_util import init_db, save_inv_extraction
-import time 
+import time
+from datetime import datetime, timezone
+
 
 app = FastAPI()
 
 # Load OCI config from ~/.oci/config
 config = oci.config.from_file()
-
 doc_client = oci.ai_document.AIServiceDocumentClient(config)
-
 
 
 @app.post("/extract")
 async def extract(file: UploadFile = File(...)):
-    pdf_bytes = await file.read()
-    encoded_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
 
-    document = oci.ai_document.models.InlineDocumentDetails(
-        data=encoded_pdf
-    )
-    
+    # ---------- PDF VALIDATION ----------
+    pdf_type = file.content_type == "application/pdf"
+    pdf_filename = file.filename.lower().endswith(".pdf")
+
+    if not (pdf_type or pdf_filename):
+        raise HTTPException(
+            status_code_errPDF=400,
+            detail_errPDF="Invalid document. Please upload a valid PDF invoice with high confidence."
+        )
+
+    # ---------- ENCODE DOCUMENT ----------
+
+    #Processes an uploaded PDF by encoding it to Base64 and submitting it to
+    #OCI AI Document for key-value extraction and document classification.
+    pdf_bytes = await file.read() 
+    encoded_pdf = base64.b64encode(pdf_bytes).decode("utf-8")    # Base64 encode PDF
+
+    document = oci.ai_document.models.InlineDocumentDetails(data=encoded_pdf)
+
     request = oci.ai_document.models.AnalyzeDocumentDetails(
         document=document,
         features=[
@@ -34,102 +50,137 @@ async def extract(file: UploadFile = File(...)):
         ]
     )
 
-    start_time = time.time()
-    response = doc_client.analyze_document(request)
-    end_time = time.time()
-    prediction_time = end_time - start_time
-    print("Execution time:", prediction_time, "seconds")
+    # ---------- CALL OCI SAFELY ----------
+    try:
+        response = doc_client.analyze_document(request)   
+    except Exception:
+        raise HTTPException(
+            status_code_errServer=503,
+            detail_errServer="The service is currently unavailable. Please try again later."
+        )
 
+    # ---------- DATA STRUCTURES ----------
     data = {}
     data_confidence = {}
-    data["Items"] = [] 
+    extracted_items = []
 
-    
+    # ---------- PARSE PAGES ----------
     for page in response.data.pages:
-        if page.document_fields:
-            for field in page.document_fields:
-                field_name = field.field_label.name 
-                field_confidence = field.field_label.confidence if field.field_label.confidence else None
-                field_value = field.field_value.text
+        if not page.document_fields:
+            continue
 
-                if field_name == "Items":
-
-
-                # Some SDK versions expose .items and some expose ._items
-                    items_list = getattr(field.field_value, "items", None)
-                    if not items_list:
-                        items_list = getattr(field.field_value, "items", [])
-
-
-                    current_item = {
-                        "Description": None,
-                        "Name": None,
-                        "Quantity": None,
-                        "UnitPrice": None,
-                        "Amount": None
-                    }
-
-                    for item in items_list:
-                        for item_field in item.field_value.items:
-                            
-                            label = item_field.field_label.name if item_field.field_label else None
-                            value = item_field.field_value.text if item_field.field_value else None
-                            
-
-                            if not label:
-                                continue
-
-                            label_lower = label.lower()
-
-                            if "description" in label_lower:
-                                current_item["Description"] = value
-                            elif "name" in label_lower:
-                                current_item["Name"] = value
-                            elif "quantity" in label_lower:
-                                current_item["Quantity"] = value
-                            elif "unitprice" in label_lower:
-                                current_item["UnitPrice"] = value
-                            elif "amount" in label_lower:
-                                current_item["Amount"] = value
-                                
-
-                        # Add only if something was filled
-                        if any(v is not None for v in current_item.values()):
-                            data["Items"].append(current_item)
-
-                  
-                data[field_name] = field_value
-                data_confidence[field_name] = field_confidence
-        
-    if response.data.detected_document_types:
-        # Iterate over detected document types
-        for validCon in response.data.detected_document_types:
-            # Extract the confidence score
-            confid = validCon.confidence
-            # Reject the document if confidence is below the threshold
-            if confid <0.9 :
-                raise HTTPException(
-                status_code=400,
-                detail="Invalid document. Please upload a valid PDF invoice with high confidence."
-            )
+        for field in page.document_fields:
+            field_key = field.field_label.name if field.field_label and field.field_label.name else ""
+            field_value = field.field_value.text if field.field_value and field.field_value.text else ""
             
+            # ---------- DATE FORMAT ----------
+            if field_key == "InvoiceDate":
+                field_value = format_date(field_value)
+
+            # ---------- NUMERIC / MONEY FIELDS ----------
+            if field_key in (
+                "InvoiceTotal",
+                "SubTotal",
+                "ShippingCost",
+                "Amount",
+                "UnitPrice",
+                "AmountDue"
+            ):
+                field_value = amount_format(field_value)
+
+            # ---------- CONFIDENCE ----------
+            field_conf = field.field_label.confidence if field.field_label and field.field_label.confidence else 0.0
+
+            # ---------- HANDLE ITEMS ----------
+            if field_key == "Items" and field.field_value:
+                # Some SDK versions expose .items and some expose ._items
+                items_list = getattr(field.field_value, "items", None)
+                if not items_list:
+                    items_list = getattr(field.field_value, "_items", [])
+
+                extracted_items = []
+
+                for item in items_list:
+                    single_item = {}
+
+                    sub_fields = getattr(item.field_value, "items", [])
+                    for sub in sub_fields:
+                        sub_key = sub.field_label.name if sub.field_label else ""
+                        sub_value = sub.field_value.text if sub.field_value and sub.field_value.text else ""
+
+                        # Clean numeric fields inside items
+                        if sub_key in ("Quantity", "UnitPrice", "Amount"):
+                            sub_value = amount_format(sub_value)
+
+                        single_item[sub_key] = sub_value
+
+                    extracted_items.append(single_item)
+
+                field_value = extracted_items
+
+            data[field_key] = field_value
+            data_confidence[field_key] = field_conf
+
+    # ---------- DOCUMENT VALIDATION ----------
+    if response.data.detected_document_types:
+        for doc_type in response.data.detected_document_types:
+            confid = doc_type.confidence
+            if confid < 0.9:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid document. Please upload a valid PDF invoice with high confidence."
+                )
+
+    # ---------- FINAL RESPONSE ----------
     result = {
-        "confidence": confid, 
+        "confidence": confid,
         "data": data,
         "dataConfidence": data_confidence,
-        "predictionTime": prediction_time
     }
-   
+
+    save_inv_extraction(result)
+
+    return result
 
 
-@app.get('/health')
+# ---------- HELPERS ----------
+def format_date(date_text):
+    """
+    Converts date like:
+    'Mar 06 2012' → '2012-03-06T00:00:00+00:00'
+    """
+    if not date_text:
+        return ""
+    try:
+        dt = datetime.strptime(date_text.strip(), "%b %d %Y")
+        return dt.replace(tzinfo=timezone.utc).isoformat()
+    except ValueError:
+        return date_text
+
+
+def amount_format(value):
+    """
+    Removes $ , and spaces → returns float
+    '$58.11' → 58.11
+    '4,293.55' → 4293.55
+    """
+    if not value:
+        return ""
+    try:
+        return float(value.replace("$", "").replace(",", "").strip())
+    except Exception:
+        return value
+
+
+@app.get("/health")
 def health():
-    return {'status': 'ok'}
-
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
     import uvicorn
     init_db()
     uvicorn.run(app, host="0.0.0.0", port=8080)
-    
+
+
+
