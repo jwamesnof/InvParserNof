@@ -16,8 +16,6 @@ doc_client = oci.ai_document.AIServiceDocumentClient(config)
 @app.post("/extract")
 async def extract(file: UploadFile = File(...)):
     pdf_bytes = await file.read()
-
-    # Base64 encode PDF
     encoded_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
 
     document = oci.ai_document.models.InlineDocumentDetails(
@@ -132,7 +130,6 @@ def health():
 
 if __name__ == "__main__":
     import uvicorn
-
     init_db()
     uvicorn.run(app, host="0.0.0.0", port=8080)
     
