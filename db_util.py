@@ -1,5 +1,7 @@
 import sqlite3
+import json
 from contextlib import contextmanager
+from typing import List, Dict 
 
 
 DB_PATH = "invoices.db"
@@ -117,3 +119,47 @@ def save_inv_extraction(result):
                     item.get("UnitPrice"),
                     item.get("Amount")
                 ))
+
+
+
+
+def getInvoiceById(invoice_id: int):
+    """
+    Retrieve a single invoice record from the database by ID.
+    Returns a dictionary if found, otherwise None.
+    """
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    query = "SELECT * FROM invoices WHERE InvoiceId = ?"
+    cursor.execute(query, (invoice_id,))
+
+    row = cursor.fetchone()
+    conn.close()
+
+    if row:
+        return dict(row)
+
+    return None
+
+
+def get_invoices_by_vendor(vendor_name: str) -> list[dict]:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT InvoiceId, VendorName, InvoiceDate, BillingAddressRecipient, ShippingAddress, SubTotal, ShippingCost, InvoiceTotal
+        FROM invoices
+        WHERE VendorName = ?
+        ORDER BY InvoiceDate DESC
+    """, (vendor_name,))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    # Convert to list of dicts
+    invoices = [dict(row) for row in rows]
+    return invoices
