@@ -53,7 +53,12 @@ async def extract(file: UploadFile = File(...)):
 
     # ---------- CALL OCI SAFELY ----------
     try:
+        start_time = time.time()
         response = doc_client.analyze_document(request)   
+        end_time = time.time()
+        prediction_time = end_time - start_time
+        print("Execution time:", prediction_time, "seconds")
+    
     except Exception:
         raise HTTPException(
             status_code=503,
@@ -141,6 +146,7 @@ async def extract(file: UploadFile = File(...)):
         "confidence": confidence_file,
         "data": data,
         "dataConfidence": data_confidence,
+        "predictionTime": prediction_time
     }
 
     save_inv_extraction(result)
