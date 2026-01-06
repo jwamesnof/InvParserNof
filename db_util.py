@@ -6,6 +6,14 @@ from typing import List, Dict
 
 DB_PATH = "invoices.db"
 
+def clean_db():
+    conn = sqlite3.connect("invoices.db")
+    cursor = conn.cursor()
+
+    cursor.execute("DELETE FROM invoices")
+    conn.commit()
+    conn.close()
+
 @contextmanager
 def get_db():
     conn = sqlite3.connect(DB_PATH)
