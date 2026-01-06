@@ -32,3 +32,14 @@ class TestGetInvoiceById(unittest.TestCase):
         response = self.client.get(f"/invoice/{self.invoice_id}")
 
         self.assertEqual(response.status_code, 200)
+
+        invoice = response.json()
+        self.assertEqual(invoice["data"]["VendorName"], "Amazon")
+        self.assertEqual(invoice["data"]["InvoiceNumber"], "INV-001")
+
+    def test_get_non_existing_invoice(self):
+        response = self.client.get("/invoice/999999")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("Invoice not found", response.json()["detail"])
+
