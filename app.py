@@ -213,12 +213,8 @@ def getInvoiceByVendorName(vendor_name):
             "invoices":invoices}   ## Return the response with vendor details and invoice information
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
 
-
-if __name__ == "__main__":
+if __name__ == "__main__":# pragma: no cover
     import uvicorn
     init_db()
     uvicorn.run(app, host="0.0.0.0", port=8080)
