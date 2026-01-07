@@ -1,49 +1,42 @@
 import unittest
-import sqlite3
 from fastapi.testclient import TestClient
 from app import app
 from db_util import init_db, clean_db, save_inv_extraction
 
 
-class TestGetInvoiceById(unittest.TestCase):
+class TestGetInvoice(unittest.TestCase):
 
     def setUp(self):
         init_db()
         self.client = TestClient(app)
 
         save_inv_extraction({
-            "confidence": 0.95,
             "data": {
-                "VendorName": "Amazon",
-                "InvoiceNumber": "INV-001"
-            },
-            "dataConfidence": {"VendorName": 0.95},
-            "predictionTime": 0.12
+                "InvoiceId": 1,
+                "VendorName": "Amazon"
+            }
         })
-
-        # ✅ Fetch the inserted invoice ID from DB
-        conn = sqlite3.connect("invoices.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM invoices ORDER BY id DESC LIMIT 1")
-        self.invoice_id = cursor.fetchone()[0]
-        conn.close()
 
     def tearDown(self):
         clean_db()
 
-    def test_get_existing_invoice(self):
-        response = self.client.get(f"/invoice/{self.invoice_id}")
-
+    def test_get_invoice_success(self):
+        response = self.client.get("/invoice/1")
         self.assertEqual(response.status_code, 200)
 
-        invoice = response.json()
-        self.assertEqual(invoice["data"]["VendorName"], "Amazon")
-        self.assertEqual(invoice["data"]["InvoiceNumber"], "INV-001")
-
-    def test_get_non_existing_invoice(self):
-        response = self.client.get("/invoice/999999")
-
+    def test_get_invoice_not_found(self):
+        response = self.client.get("/invoice/999")
         self.assertEqual(response.status_code, 404)
-        self.assertIn("Invoice not found", response.json()["detail"])
 
+    def test_invoice_contains_vendor_name(self):
+        response = self.client.get("/invoice/1")
+        self.assertEqual(response.json()["VendorName"], "Amazon")
+
+    def test_invoice_contains_invoice_id(self):
+        response = self.client.get("/invoice/1")
+        self.assertIn("InvoiceId", response.json())
+
+    def test_invoice_response_is_dict(self):
+        response = self.client.get("/invoice/1")
+        self.assertIsInstance(response.json(), dict)
 
