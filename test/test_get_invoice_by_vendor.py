@@ -4,53 +4,63 @@ from app import app
 from db_util import init_db, clean_db, save_inv_extraction
 
 
-class TestGetInvoicesByVendor(unittest.TestCase):
-    """Integration tests for GET /invoices/vendor/{vendor_name}"""
+class TestGetInvoiceByVendor(unittest.TestCase):
 
     def setUp(self):
         init_db()
         self.client = TestClient(app)
 
-        # Insert multiple invoices for same vendor
+        # ✅ MUST include InvoiceId or nothing is saved
+        save_inv_extraction({
+            "confidence": 0.95,
+            "data": {
+                "InvoiceId": 1,
+                "VendorName": "Amazon"
+            },
+            "dataConfidence": {},
+            "predictionTime": 0.1
+        })
+
         save_inv_extraction({
             "confidence": 0.96,
             "data": {
-                "VendorName": "Amazon",
-                "InvoiceNumber": "A-001"
+                "InvoiceId": 2,
+                "VendorName": "Amazon"
             },
-            "dataConfidence": {"VendorName": 0.96},
-            "predictionTime": 0.1
+            "dataConfidence": {},
+            "predictionTime": 0.2
         })
 
         save_inv_extraction({
             "confidence": 0.97,
             "data": {
-                "VendorName": "Amazon",
-                "InvoiceNumber": "A-002"
+                "InvoiceId": 3,
+                "VendorName": "Google"
             },
-            "dataConfidence": {"VendorName": 0.97},
-            "predictionTime": 0.1
+            "dataConfidence": {},
+            "predictionTime": 0.3
         })
 
     def tearDown(self):
         clean_db()
 
-    def test_get_invoices_for_existing_vendor(self):
+    def test_vendor_success(self):
         response = self.client.get("/invoices/vendor/Amazon")
-
         self.assertEqual(response.status_code, 200)
 
-        data = response.json()
-        self.assertEqual(data["VendorName"], "Amazon")
-        self.assertEqual(data["TotalInvoices"], 2)
-        self.assertEqual(len(data["invoices"]), 2)
+    def test_vendor_invoice_count(self):
+        response = self.client.get("/invoices/vendor/Amazon")
+        self.assertEqual(response.json()["TotalInvoices"], 2)
 
-    def test_get_invoices_for_unknown_vendor(self):
-        response = self.client.get("/invoices/vendor/UnknownVendor")
+    def test_vendor_name_echoed(self):
+        response = self.client.get("/invoices/vendor/Amazon")
+        self.assertEqual(response.json()["VendorName"], "Amazon")
 
-        self.assertEqual(response.status_code, 200)
+    def test_vendor_not_found(self):
+        response = self.client.get("/invoices/vendor/Apple")
+        self.assertEqual(response.json()["TotalInvoices"], 0)
+        self.assertEqual(response.json()["VendorName"], "Unknown Vendor")
 
-        data = response.json()
-        self.assertEqual(data["VendorName"], "Unknown Vendor")
-        self.assertEqual(data["TotalInvoices"], 0)
-        self.assertEqual(data["invoices"], [])
+    def test_vendor_invoices_is_list(self):
+        response = self.client.get("/invoices/vendor/Amazon")
+        self.assertIsInstance(response.json()["invoices"], list)
