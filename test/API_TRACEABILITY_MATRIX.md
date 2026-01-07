@@ -41,7 +41,7 @@ and that **100% statement coverage** is achieved.
 
 | File   | Statements | Missed | Coverage |
 | ------ | ---------- | ------ | -------- |
-| app.py | 98         | 0      | **100%** |
+| app.py | 97         | 0      | **100%** |
 
 All executable statements are covered by automated tests.
 
