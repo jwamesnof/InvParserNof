@@ -12,10 +12,12 @@ from datetime import datetime, timezone
 
 app = FastAPI()
 
-# Load OCI config from ~/.oci/config
-config = oci.config.from_file()
-doc_client = oci.ai_document.AIServiceDocumentClient(config)
 
+# Load OCI config from ~/.oci/config
+def get_doc_client():
+    config = oci.config.from_file()
+    doc_client = oci.ai_document.AIServiceDocumentClient(config)
+    return doc_client
 
 @app.post("/extract")
 async def extract(file: UploadFile = File(...)):
@@ -54,7 +56,8 @@ async def extract(file: UploadFile = File(...)):
     # ---------- CALL OCI SAFELY ----------
     try:
         start_time = time.time()
-        response = doc_client.analyze_document(request)   
+        client = get_doc_client()
+        response = client.analyze_document(request)   
         end_time = time.time()
         prediction_time = end_time - start_time
         print("Execution time:", prediction_time, "seconds")
@@ -214,7 +217,7 @@ def getInvoiceByVendorName(vendor_name):
 
 
 
-if __name__ == "__main__":# pragma: no cover
+if __name__ == "__main__": # pragma: no cover
     import uvicorn
     init_db()
     uvicorn.run(app, host="0.0.0.0", port=8080)
