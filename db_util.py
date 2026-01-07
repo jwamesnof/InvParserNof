@@ -10,7 +10,10 @@ def clean_db():
     conn = sqlite3.connect("invoices.db")
     cursor = conn.cursor()
 
+    cursor.execute("DELETE FROM items")
     cursor.execute("DELETE FROM invoices")
+    cursor.execute("DELETE FROM confidences")
+
     conn.commit()
     conn.close()
 
@@ -127,9 +130,9 @@ def save_inv_extraction(result):
                     item.get("UnitPrice"),
                     item.get("Amount")
                 ))
+            
 
-
-
+                
 
 def getInvoiceById(invoice_id: int):
     """
@@ -167,7 +170,7 @@ def get_invoices_by_vendor(vendor_name: str) -> list[dict]:
 
     rows = cursor.fetchall()
     conn.close()
-
+    print("my rows",rows)
     # Convert to list of dicts
     invoices = [dict(row) for row in rows]
     return invoices
