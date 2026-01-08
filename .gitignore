@@ -44,3 +44,4 @@ Thumbs.db
 allure-results/ 
 allure-report/
 
+coverage.xml
