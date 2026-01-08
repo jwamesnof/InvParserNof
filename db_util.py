@@ -6,6 +6,17 @@ from typing import List, Dict
 
 DB_PATH = "invoices.db"
 
+def clean_db():
+    conn = sqlite3.connect("invoices.db")
+    cursor = conn.cursor()
+
+    cursor.execute("DELETE FROM items")
+    cursor.execute("DELETE FROM invoices")
+    cursor.execute("DELETE FROM confidences")
+
+    conn.commit()
+    conn.close()
+
 @contextmanager
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -119,9 +130,9 @@ def save_inv_extraction(result):
                     item.get("UnitPrice"),
                     item.get("Amount")
                 ))
+            
 
-
-
+                
 
 def getInvoiceById(invoice_id: int):
     """
@@ -159,7 +170,6 @@ def get_invoices_by_vendor(vendor_name: str) -> list[dict]:
 
     rows = cursor.fetchall()
     conn.close()
-
     # Convert to list of dicts
     invoices = [dict(row) for row in rows]
     return invoices
