@@ -170,7 +170,6 @@ def get_invoices_by_vendor(vendor_name: str) -> list[dict]:
 
     rows = cursor.fetchall()
     conn.close()
-    print("my rows",rows)
     # Convert to list of dicts
     invoices = [dict(row) for row in rows]
     return invoices
