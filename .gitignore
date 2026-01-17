@@ -50,3 +50,7 @@ default/
 allure-results/
 
 
+allure-results/ 
+allure-report/
+
+coverage.xml
