@@ -41,6 +41,15 @@ Thumbs.db
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
+coverage.xml 
+htmlcov/ 
+allure-report/
+data/
+widgets/
+default/
+allure-results/
+
+
 allure-results/ 
 allure-report/
 
